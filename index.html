@@ -1,103 +1,36 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Gym Log</title>
-<meta name="theme-color" content="#111111">
-<link rel="manifest" href="manifest.json">
+<!DOCTYPE html><html lang='ja'><head><meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>Gym Log</title><link rel='manifest' href='manifest.json'>
 <style>
-body{background:#111;color:#fff;font-family:sans-serif;max-width:500px;margin:auto;padding:16px}
-select,button{width:100%;padding:14px;font-size:18px;margin:8px 0}
-.card{background:#222;padding:12px;border-radius:10px;margin:10px 0}
-.row{display:flex;justify-content:space-between;align-items:center;margin:8px 0}
-.val{font-size:22px;min-width:80px;text-align:center}
-.small{font-size:14px;color:#bbb}
-</style>
-</head>
-<body>
-<h2>Gym Log</h2>
-
-<select id="exercise"></select>
-
-<div class="card">
-<h3>前回記録</h3>
-<div id="previous">なし</div>
-</div>
-
+body{background:#111;color:#fff;font-family:sans-serif;max-width:520px;margin:auto;padding:15px}
+select,button{width:100%;padding:14px;font-size:18px;margin:6px 0}
+.card{background:#222;border-radius:12px;padding:12px;margin:10px 0}
+</style></head><body>
+<h2>Gym Log</h2><select id="exercise"></select>
+<div class="card"><h3>前回記録</h3><div id="prev">なし</div></div>
 <div id="sets"></div>
-
 <button onclick="saveWorkout()">保存</button>
-
+<div class="card"><h3>履歴</h3><div id="history"></div></div>
 <script>
-const defaultExercises=["ベンチプレス","チェストプレス","ラットプルダウン","ラットマシン","スクワット","レッグプレス"];
-
-const exercises=JSON.parse(localStorage.getItem("exerciseList")||JSON.stringify(defaultExercises));
-const ex=document.getElementById("exercise");
-ex.innerHTML=exercises.map(e=>`<option>${e}</option>`).join("");
-
-const setsDiv=document.getElementById("sets");
-
-function buildSets(){
- setsDiv.innerHTML="";
- for(let i=1;i<=3;i++){
-  setsDiv.innerHTML+=`
-  <div class="card">
-  <h3>SET ${i}</h3>
-  <div class="row"><span>重量</span>
-  <button onclick="chg('w${i}',-2.5)">-</button>
-  <span class="val" id="w${i}">0</span>
-  <button onclick="chg('w${i}',2.5)">+</button></div>
-
-  <div class="row"><span>回数</span>
-  <button onclick="chg('r${i}',-1)">-</button>
-  <span class="val" id="r${i}">0</span>
-  <button onclick="chg('r${i}',1)">+</button></div>
-  </div>`;
- }
+const defaults=["ベンチプレス","チェストプレス","ラットプルダウン","ラットマシン","スクワット","レッグプレス"];
+const ex=document.getElementById('exercise');
+ex.innerHTML=defaults.map(x=>`<option>${x}</option>`).join('');
+let h='';const w=[];for(let i=0;i<=200;i+=2.5)w.push(i.toFixed(1));
+for(let s=1;s<=3;s++){h+=`<div class="card"><h3>SET ${s}</h3>重量<select id="w${s}">${w.map(v=>`<option>${v}</option>`).join('')}</select>回数<select id="r${s}">${Array.from({length:31},(_,k)=>`<option>${k}</option>`).join('')}</select></div>`;}
+document.getElementById('sets').innerHTML=h;
+function loadPrev(){
+const data=JSON.parse(localStorage.getItem('workouts')||'[]');
+const recs=data.filter(x=>x.exercise===ex.value);
+if(!recs.length){document.getElementById('prev').innerHTML='なし';document.getElementById('history').innerHTML='なし';return;}
+const last=recs[recs.length-1];
+document.getElementById('prev').innerHTML=last.date+'<br>'+last.sets.map((s,i)=>`${i+1}セット目 ${s.w}kg × ${s.r}回`).join('<br>');
+last.sets.forEach((s,i)=>{document.getElementById('w'+(i+1)).value=s.w;document.getElementById('r'+(i+1)).value=s.r;});
+document.getElementById('history').innerHTML=recs.slice().reverse().slice(0,10).map(r=>`${r.date}<br>${r.sets.map((s,i)=>`${i+1}:${s.w}kg×${s.r}`).join(' / ')}`).join('<hr>');
 }
-
-function chg(id,val){
- let n=parseFloat(document.getElementById(id).innerText)||0;
- n=Math.max(0,n+val);
- document.getElementById(id).innerText=(id.startsWith('w'))?n.toFixed(1):Math.round(n);
-}
-
-function loadPrevious(){
- const data=JSON.parse(localStorage.getItem("workouts")||"[]");
- const current=ex.value;
- const recs=data.filter(x=>x.exercise===current);
- if(!recs.length){document.getElementById("previous").innerHTML="なし";return;}
- const last=recs[recs.length-1];
- document.getElementById("previous").innerHTML=last.date+"<br>"+last.sets.map((s,i)=>`${i+1}セット目 ${s.w}kg × ${s.r}回`).join("<br>");
- last.sets.forEach((s,i)=>{
-   document.getElementById("w"+(i+1)).innerText=Number(s.w).toFixed(1);
-   document.getElementById("r"+(i+1)).innerText=s.r;
- });
-}
-
 function saveWorkout(){
- const data=JSON.parse(localStorage.getItem("workouts")||"[]");
- const sets=[];
- for(let i=1;i<=3;i++){
-   sets.push({
-    w:parseFloat(document.getElementById("w"+i).innerText),
-    r:parseInt(document.getElementById("r"+i).innerText)
-   });
- }
- data.push({
-   date:new Date().toLocaleDateString("ja-JP"),
-   exercise:ex.value,
-   sets:sets
- });
- localStorage.setItem("workouts",JSON.stringify(data));
- alert("保存しました");
- loadPrevious();
-}
-
-buildSets();
-ex.addEventListener("change",loadPrevious);
-loadPrevious();
-</script>
-</body>
-</html>
+const data=JSON.parse(localStorage.getItem('workouts')||'[]');
+const sets=[];for(let i=1;i<=3;i++){sets.push({w:document.getElementById('w'+i).value,r:document.getElementById('r'+i).value});}
+data.push({date:new Date().toLocaleDateString('ja-JP'),exercise:ex.value,sets});
+localStorage.setItem('workouts',JSON.stringify(data));alert('保存しました');loadPrev();}
+ex.addEventListener('change',loadPrev);loadPrev();
+</script></body></html>
