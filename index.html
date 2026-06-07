@@ -1,36 +1,426 @@
-<!DOCTYPE html><html lang='ja'><head><meta charset='UTF-8'>
-<meta name='viewport' content='width=device-width,initial-scale=1'>
-<title>Gym Log</title><link rel='manifest' href='manifest.json'>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gym Log</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <style>
-body{background:#111;color:#fff;font-family:sans-serif;max-width:520px;margin:auto;padding:15px}
-select,button{width:100%;padding:14px;font-size:18px;margin:6px 0}
-.card{background:#222;border-radius:12px;padding:12px;margin:10px 0}
-</style></head><body>
-<h2>Gym Log</h2><select id="exercise"></select>
-<div class="card"><h3>前回記録</h3><div id="prev">なし</div></div>
-<div id="sets"></div>
-<button onclick="saveWorkout()">保存</button>
-<div class="card"><h3>履歴</h3><div id="history"></div></div>
-<script>
-const defaults=["ベンチプレス","チェストプレス","ラットプルダウン","ラットマシン","スクワット","レッグプレス"];
-const ex=document.getElementById('exercise');
-ex.innerHTML=defaults.map(x=>`<option>${x}</option>`).join('');
-let h='';const w=[];for(let i=0;i<=200;i+=2.5)w.push(i.toFixed(1));
-for(let s=1;s<=3;s++){h+=`<div class="card"><h3>SET ${s}</h3>重量<select id="w${s}">${w.map(v=>`<option>${v}</option>`).join('')}</select>回数<select id="r${s}">${Array.from({length:31},(_,k)=>`<option>${k}</option>`).join('')}</select></div>`;}
-document.getElementById('sets').innerHTML=h;
-function loadPrev(){
-const data=JSON.parse(localStorage.getItem('workouts')||'[]');
-const recs=data.filter(x=>x.exercise===ex.value);
-if(!recs.length){document.getElementById('prev').innerHTML='なし';document.getElementById('history').innerHTML='なし';return;}
-const last=recs[recs.length-1];
-document.getElementById('prev').innerHTML=last.date+'<br>'+last.sets.map((s,i)=>`${i+1}セット目 ${s.w}kg × ${s.r}回`).join('<br>');
-last.sets.forEach((s,i)=>{document.getElementById('w'+(i+1)).value=s.w;document.getElementById('r'+(i+1)).value=s.r;});
-document.getElementById('history').innerHTML=recs.slice().reverse().slice(0,10).map(r=>`${r.date}<br>${r.sets.map((s,i)=>`${i+1}:${s.w}kg×${s.r}`).join(' / ')}`).join('<hr>');
+body{
+    background:#111;
+    color:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    max-width:600px;
+    margin:auto;
+    padding:15px;
 }
+
+.card{
+    background:#222;
+    border-radius:12px;
+    padding:12px;
+    margin:10px 0;
+}
+
+input,select,button{
+    width:100%;
+    box-sizing:border-box;
+    padding:12px;
+    font-size:18px;
+    margin:6px 0;
+    border-radius:10px;
+    border:none;
+}
+
+button{
+    background:#444;
+    color:white;
+}
+
+.wheel{
+    height:120px;
+}
+
+canvas{
+    background:white;
+    border-radius:10px;
+}
+
+h2,h3{
+    margin-top:0;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Gym Log</h2>
+
+<div class="card">
+    <h3>種目</h3>
+
+    <input
+        id="newExercise"
+        placeholder="新しい種目を追加">
+
+    <button onclick="addExercise()">
+        種目追加
+    </button>
+
+    <select id="exercise"></select>
+</div>
+
+<div class="card">
+    <h3>体重(kg)</h3>
+
+    <input
+        id="bodyWeight"
+        type="number"
+        step="0.1"
+        placeholder="78.4">
+</div>
+
+<div class="card">
+    <h3>前回記録</h3>
+    <div id="prev">なし</div>
+</div>
+
+<div id="sets"></div>
+
+<button onclick="saveWorkout()">
+保存
+</button>
+
+<div class="card">
+    <h3>重量推移グラフ</h3>
+    <canvas id="chart"></canvas>
+</div>
+
+<script>
+
+const defaultExercises = [
+    "ベンチプレス",
+    "チェストプレス",
+    "ラットプルダウン",
+    "ラットマシン",
+    "スクワット",
+    "レッグプレス"
+];
+
+let exercises = JSON.parse(
+    localStorage.getItem("exerciseList") ||
+    JSON.stringify(defaultExercises)
+);
+
+const exerciseSelect =
+    document.getElementById("exercise");
+
+function refreshExerciseList(){
+
+    exerciseSelect.innerHTML =
+        exercises.map(e =>
+            `<option>${e}</option>`
+        ).join("");
+
+}
+
+refreshExerciseList();
+
+function addExercise(){
+
+    const name =
+        document
+        .getElementById("newExercise")
+        .value
+        .trim();
+
+    if(!name){
+        return;
+    }
+
+    if(!exercises.includes(name)){
+
+        exercises.push(name);
+
+        localStorage.setItem(
+            "exerciseList",
+            JSON.stringify(exercises)
+        );
+
+    }
+
+    refreshExerciseList();
+
+    exerciseSelect.value = name;
+
+    document.getElementById(
+        "newExercise"
+    ).value = "";
+
+    loadPrevious();
+
+}
+
+const weightList = [];
+
+for(let i=0;i<=200;i+=2.5){
+
+    weightList.push(
+        i.toFixed(1)
+    );
+
+}
+
+let setHtml = "";
+
+for(let set=1;set<=3;set++){
+
+    setHtml += `
+    <div class="card">
+
+        <h3>SET ${set}</h3>
+
+        重量
+
+        <select
+            class="wheel"
+            id="w${set}">
+
+            ${weightList.map(
+                w=>`<option>${w}</option>`
+            ).join("")}
+
+        </select>
+
+        回数
+
+        <select
+            class="wheel"
+            id="r${set}">
+
+            ${
+            Array.from(
+                {length:31},
+                (_,i)=>
+                `<option>${i}</option>`
+            ).join("")
+            }
+
+        </select>
+
+    </div>
+    `;
+
+}
+
+document.getElementById(
+    "sets"
+).innerHTML = setHtml;
+
+let chart = null;
+
+function drawChart(){
+
+    const workouts =
+        JSON.parse(
+            localStorage.getItem(
+                "workouts"
+            ) || "[]"
+        );
+
+    const records =
+        workouts.filter(
+            x =>
+            x.exercise ===
+            exerciseSelect.value
+        );
+
+    const labels =
+        records.map(
+            x => x.date
+        );
+
+    const values =
+        records.map(
+            x =>
+            Math.max(
+                ...x.sets.map(
+                    s =>
+                    Number(s.w)
+                )
+            )
+        );
+
+    const ctx =
+        document.getElementById(
+            "chart"
+        );
+
+    if(chart){
+        chart.destroy();
+    }
+
+    chart = new Chart(
+        ctx,
+        {
+            type:"line",
+
+            data:{
+                labels:labels,
+
+                datasets:[
+                {
+                    label:"最大重量(kg)",
+                    data:values,
+                    tension:0.3
+                }
+                ]
+            },
+
+            options:{
+                responsive:true
+            }
+        }
+    );
+
+}
+
+function loadPrevious(){
+
+    const workouts =
+        JSON.parse(
+            localStorage.getItem(
+                "workouts"
+            ) || "[]"
+        );
+
+    const records =
+        workouts.filter(
+            x =>
+            x.exercise ===
+            exerciseSelect.value
+        );
+
+    if(records.length === 0){
+
+        document.getElementById(
+            "prev"
+        ).innerHTML = "なし";
+
+        drawChart();
+
+        return;
+    }
+
+    const last =
+        records[
+            records.length - 1
+        ];
+
+    document.getElementById(
+        "prev"
+    ).innerHTML =
+        last.date +
+        "<br>" +
+        last.sets.map(
+            (s,i)=>
+            `${i+1}セット目 ${s.w}kg × ${s.r}回`
+        ).join("<br>");
+
+    if(last.bodyWeight){
+
+        document.getElementById(
+            "bodyWeight"
+        ).value =
+        last.bodyWeight;
+
+    }
+
+    last.sets.forEach(
+        (s,i)=>{
+
+        document.getElementById(
+            "w"+(i+1)
+        ).value =
+        s.w;
+
+        document.getElementById(
+            "r"+(i+1)
+        ).value =
+        s.r;
+
+    });
+
+    drawChart();
+
+}
+
 function saveWorkout(){
-const data=JSON.parse(localStorage.getItem('workouts')||'[]');
-const sets=[];for(let i=1;i<=3;i++){sets.push({w:document.getElementById('w'+i).value,r:document.getElementById('r'+i).value});}
-data.push({date:new Date().toLocaleDateString('ja-JP'),exercise:ex.value,sets});
-localStorage.setItem('workouts',JSON.stringify(data));alert('保存しました');loadPrev();}
-ex.addEventListener('change',loadPrev);loadPrev();
-</script></body></html>
+
+    const workouts =
+        JSON.parse(
+            localStorage.getItem(
+                "workouts"
+            ) || "[]"
+        );
+
+    const sets = [];
+
+    for(let i=1;i<=3;i++){
+
+        sets.push({
+            w:document.getElementById(
+                "w"+i
+            ).value,
+
+            r:document.getElementById(
+                "r"+i
+            ).value
+        });
+
+    }
+
+    workouts.push({
+
+        date:
+        new Date()
+        .toLocaleDateString(
+            "ja-JP"
+        ),
+
+        bodyWeight:
+        document.getElementById(
+            "bodyWeight"
+        ).value,
+
+        exercise:
+        exerciseSelect.value,
+
+        sets:sets
+
+    });
+
+    localStorage.setItem(
+        "workouts",
+        JSON.stringify(workouts)
+    );
+
+    alert("保存しました");
+
+    loadPrevious();
+
+}
+
+exerciseSelect.addEventListener(
+    "change",
+    loadPrevious
+);
+
+loadPrevious();
+
+</script>
+
+</body>
+</html>
